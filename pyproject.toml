@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchor-runtime"
+version = "0.1.0"
+description = "Durable execution runtime for LLM agent workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "asyncpg>=0.29",
+    "fastapi>=0.110",
+    "pydantic>=2.6",
+    "typer>=0.12",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.30"]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+anchor = "anchor.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:anchor.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+# B008: Depends(...) in a default is the documented FastAPI idiom.
+# ASYNC109/ASYNC240: trio-specific rules; this codebase is asyncio + asyncpg.
+# UP042: str-Enum mixin is deliberate, so values serialise straight to JSON.
+ignore = ["E501", "B008", "ASYNC109", "ASYNC240", "UP042"]
