@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: anchor
+      POSTGRES_DB: anchor
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d anchor"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - anchor-pgdata:/var/lib/postgresql/data
+
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    ports:
+      - "8001:8000"
+
+  api:
+    build: .
+    command: ["anchor", "api", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      ANCHOR_DATABASE_URL: postgresql://postgres:anchor@postgres:5432/anchor
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["anchor", "worker"]
+    environment:
+      ANCHOR_DATABASE_URL: postgresql://postgres:anchor@postgres:5432/anchor
+      ANCHOR_MODEL_PROVIDER: echo
+      # Scripted tool sequence for the offline provider, so a fresh clone does
+      # something interesting without any credentials.
+      ANCHOR_ECHO_PLAN: lookup_payment,issue_refund,notify_customer
+      ANCHOR_WORKER_CONCURRENCY: "8"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Scale freely: workers coordinate through the queue, not through each other.
+    deploy:
+      replicas: 2
+
+volumes:
+  anchor-pgdata:

@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # The suite runs against a real Postgres on purpose. The behaviour under test
+    # is SKIP LOCKED, lease expiry and unique-constraint collisions, and a mock of
+    # those is a mock of the thing that would break in production.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: anchor
+          POSTGRES_DB: anchor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d anchor"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      ANCHOR_TEST_DATABASE_URL: postgresql://postgres:anchor@localhost:5432/anchor
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests scripts
+
+      - name: Test
+        run: pytest -q
+
+      # The invariant this repo exists to demonstrate, checked on every commit.
+      - name: Chaos (SIGKILL mid-refund, exactly-once must hold)
+        run: python scripts/chaos_kill.py --kills 3 --lease-seconds 3 --chaos-delay 1.5
+        env:
+          ANCHOR_DATABASE_URL: postgresql://postgres:anchor@localhost:5432/anchor
+
+  test-dynamo:
+    runs-on: ubuntu-latest
+    # No services needed: moto intercepts boto3 calls in-process with no
+    # network access and no credentials required.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: DynamoDB contract tests (moto)
+        run: pytest tests/test_store_dynamo.py -v
